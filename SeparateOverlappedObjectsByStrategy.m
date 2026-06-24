@@ -8,6 +8,7 @@ function [FinalSegmentedObjects, separationInfo] = SeparateOverlappedObjectsBySt
 FinalSegmentedObjects = zeros(size(BW));
 separationInfo = struct('Label', {}, 'DefectCount', {}, 'Method', {}, ...
     'CurveCoefficients', {}, 'CurveCenter', {}, 'CurveScale', {}, 'UsedFallback', {});
+strategyTimer = tic;
 
 if ~any(RealOverlap(:))
     return;
@@ -27,8 +28,12 @@ switch lower(config.separation_defect_count_source)
         end
 
     case 'convexity'
+        defectTimer = tic;
         convexityDefects = DetectConvexityDefects(BW, ...
             config.convexity_defect_depth_threshold, false);
+        if config.verbose
+            fprintf('Separate strategy: convexity defect counting %.2f s.\n', toc(defectTimer));
+        end
         defectLabels = [];
         if ~isempty(convexityDefects)
             defectLabels = [convexityDefects.Label];
@@ -77,7 +82,11 @@ for labelIndex = 1:numel(overlapLabels)
 end
 
 if ~isempty(curveFitLabels)
+    curveTimer = tic;
     [curveLabels, curveInfo, failedCurveLabels] = SeparateMultipleOverlapsByImplicitCubic(BW, L, curveFitLabels, config);
+    if config.verbose
+        fprintf('Separate strategy: curve-fit separation %.2f s.\n', toc(curveTimer));
+    end
     FinalSegmentedObjects = appendLabels(FinalSegmentedObjects, curveLabels);
 
     for curveIndex = 1:numel(curveInfo)
@@ -102,13 +111,35 @@ if ~isempty(curveFitLabels)
 end
 
 if any(watershedMask(:))
+    maskTimer = tic;
     newImage = MaskOverlappedBubblesBeforeWatershed(I_Formask, watershedMask, config);
+    if config.verbose
+        fprintf('Separate strategy: watershed masking %.2f s.\n', toc(maskTimer));
+    end
+
+    watershedTimer = tic;
     watershedLabels = WatershedMyself(newImage, config);
+    if config.verbose
+        fprintf('Separate strategy: watershed transform %.2f s.\n', toc(watershedTimer));
+    end
+
+    combineTimer = tic;
     watershedObjects = CombineWatershedSegments(watershedLabels, config);
+    if config.verbose
+        fprintf('Separate strategy: watershed combine/merge %.2f s.\n', toc(combineTimer));
+    end
+
+    appendTimer = tic;
     FinalSegmentedObjects = appendLabels(FinalSegmentedObjects, watershedObjects);
+    if config.verbose
+        fprintf('Separate strategy: append/reorder watershed objects %.2f s.\n', toc(appendTimer));
+    end
 end
 
 FinalSegmentedObjects = ReorderingLabels(FinalSegmentedObjects);
+if config.verbose
+    fprintf('Separate strategy: total %.2f s.\n', toc(strategyTimer));
+end
 
 end
 

@@ -112,17 +112,17 @@ function config = BubbleDetectionConfig()
     % Merging watershed regions that belong to the same bubble
     config.watershed_merge_strategy = 'ellipse'; % Options: 'ellipse' or 'centroid'
     config.merge_distance_threshold = 25;      % Pixels - used only by centroid merge strategy
-    config.merge_max_iterations = 10;          % Max iterations for region merging
+    config.merge_max_iterations = 5;           % Max iterations for region merging
 
     % Ellipse-guided watershed merging. Neighboring watershed regions are
     % merged only when the merged boundary is a better ellipse fit than the
     % two separate boundaries.
-    config.ellipse_merge_error_ratio = 0.90;       % merged RMSE must be below this fraction of separate RMSE
-    config.ellipse_merge_min_improvement = 0.02;   % minimum absolute RMSE improvement
-    config.ellipse_merge_max_merged_error = 0.35;  % reject merges with poor absolute ellipse fit
+    config.ellipse_merge_error_ratio = 1.05;       % merged RMSE must be below this fraction of separate RMSE
+    config.ellipse_merge_min_improvement = -0.01;  % minimum absolute RMSE improvement; negative allows nearly equal fits
+    config.ellipse_merge_max_merged_error = 0.50;  % reject merges with poor absolute ellipse fit
     config.ellipse_merge_neighbor_dilation_radius = 2; % pixels for finding neighbors across watershed ridges
-    config.ellipse_merge_max_candidate_pairs = 150; % Max neighboring pairs evaluated per iteration
-    config.ellipse_merge_max_boundary_points = 300; % Max boundary points used per ellipse fit
+    config.ellipse_merge_max_candidate_pairs = 40;  % Max neighboring pairs evaluated per iteration
+    config.ellipse_merge_max_boundary_points = 120; % Max boundary points used per ellipse fit
     config.show_ellipse_merge_figures = false;     % Show candidate pairs and accepted ellipse fits
     config.ellipse_merge_max_visual_pairs = 200;   % Limit candidate-pair lines drawn in diagnostics
     config.ellipse_merge_max_fit_figures = 8;      % Limit before/after ellipse fit diagnostic figures

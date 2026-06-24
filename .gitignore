@@ -1,0 +1,8 @@
+# MATLAB profiler output
+ProfileResults/
+profileInfo.mat
+profileInfo_failed.mat
+
+# MATLAB generated files
+*.asv
+*.m~

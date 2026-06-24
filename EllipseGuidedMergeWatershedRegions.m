@@ -12,6 +12,12 @@ function LL = EllipseGuidedMergeWatershedRegions(LL, config)
 LL = ReorderingLabels(LL);
 showFigures = isfield(config, 'show_ellipse_merge_figures') && config.show_ellipse_merge_figures;
 fitFigureCount = 0;
+mergeCount = 0;
+verbose = isfield(config, 'verbose') && config.verbose;
+
+if verbose
+    fprintf('Ellipse merge: starting with %d watershed regions.\n', max(LL(:)));
+end
 
 if showFigures
     figure('Name', 'Ellipse merge - original watershed result');
@@ -21,6 +27,9 @@ end
 for iteration = 1:config.merge_max_iterations
     candidatePairs = findNeighboringRegionPairs(LL, config);
     if isempty(candidatePairs)
+        if verbose
+            fprintf('Ellipse merge iteration %d: no neighboring candidate pairs.\n', iteration);
+        end
         break;
     end
 
@@ -29,17 +38,35 @@ for iteration = 1:config.merge_max_iterations
     end
 
     labelStats = regionprops(LL, 'BoundingBox');
-    fitCache = buildFitCache(LL, labelStats, config);
+    fitCache = buildFitCache(LL, labelStats, candidatePairs, config);
     bestDecision = struct('Accepted', false, 'Improvement', -inf);
+    bestRejectedDecision = struct('Accepted', false, 'Improvement', -inf, ...
+        'LabelA', NaN, 'LabelB', NaN, 'SeparateError', inf, 'MergedError', inf);
     for pairIndex = 1:size(candidatePairs, 1)
         decision = evaluateMergeCandidate(LL, candidatePairs(pairIndex, 1), candidatePairs(pairIndex, 2), config, fitCache, labelStats);
         if decision.Accepted && decision.Improvement > bestDecision.Improvement
             bestDecision = decision;
+        elseif ~decision.Accepted && decision.Improvement > bestRejectedDecision.Improvement
+            bestRejectedDecision = decision;
         end
     end
 
     if ~bestDecision.Accepted
+        if verbose
+            fprintf(['Ellipse merge iteration %d: %d candidates, no accepted merge. ', ...
+                'Best rejected pair %g/%g: separate %.4f, merged %.4f, improvement %.4f.\n'], ...
+                iteration, size(candidatePairs, 1), bestRejectedDecision.LabelA, bestRejectedDecision.LabelB, ...
+                bestRejectedDecision.SeparateError, bestRejectedDecision.MergedError, bestRejectedDecision.Improvement);
+        end
         break;
+    end
+
+    mergeCount = mergeCount + 1;
+    if verbose
+        fprintf(['Ellipse merge iteration %d: %d candidates, accepted pair %d/%d ', ...
+            '(separate %.4f, merged %.4f, improvement %.4f).\n'], ...
+            iteration, size(candidatePairs, 1), bestDecision.LabelA, bestDecision.LabelB, ...
+            bestDecision.SeparateError, bestDecision.MergedError, bestDecision.Improvement);
     end
 
     if showFigures && fitFigureCount < config.ellipse_merge_max_fit_figures
@@ -56,10 +83,15 @@ if showFigures
     imshow(label2rgb(LL, 'jet', 'k', 'shuffle'));
 end
 
+if verbose
+    fprintf('Ellipse merge: accepted %d merge(s), final region count %d.\n', mergeCount, max(LL(:)));
+end
+
 end
 
 function candidatePairs = findNeighboringRegionPairs(LL, config)
 candidatePairs = zeros(0, 2);
+pairScores = zeros(0, 1);
 
 radius = 2;
 if isfield(config, 'ellipse_merge_neighbor_dilation_radius')
@@ -84,37 +116,42 @@ for pixelIndex = 1:numel(ridgePixels)
 
     [labelA, labelB] = find(triu(true(numel(neighborLabels)), 1));
     newPairs = [neighborLabels(labelA), neighborLabels(labelB)];
+    newScores = ones(size(newPairs, 1), 1);
     candidatePairs = [candidatePairs; newPairs]; %#ok<AGROW>
+    pairScores = [pairScores; newScores]; %#ok<AGROW>
 
     if isfield(config, 'ellipse_merge_max_candidate_pairs') && ...
-            size(unique(candidatePairs, 'rows'), 1) >= config.ellipse_merge_max_candidate_pairs
+            size(unique(candidatePairs, 'rows'), 1) >= 3 * config.ellipse_merge_max_candidate_pairs
         break;
     end
 end
 
 if ~isempty(candidatePairs)
-    candidatePairs = unique(candidatePairs, 'rows');
+    [candidatePairs, ~, groupIndex] = unique(candidatePairs, 'rows');
+    pairScores = accumarray(groupIndex, pairScores);
+    [~, scoreOrder] = sort(pairScores, 'descend');
+    candidatePairs = candidatePairs(scoreOrder, :);
     if isfield(config, 'ellipse_merge_max_candidate_pairs')
         candidatePairs = candidatePairs(1:min(end, config.ellipse_merge_max_candidate_pairs), :);
     end
 end
 end
 
-function fitCache = buildFitCache(LL, labelStats, config)
+function fitCache = buildFitCache(LL, labelStats, candidatePairs, config)
 maxLabel = max(LL(:));
 fitCache = cell(maxLabel, 1);
-for labelNumber = 1:maxLabel
+candidateLabels = unique(candidatePairs(:));
+for labelIndex = 1:numel(candidateLabels)
+    labelNumber = candidateLabels(labelIndex);
     if labelNumber <= numel(labelStats) && labelStats(labelNumber).BoundingBox(3) > 0
         fitCache{labelNumber} = fitEllipseToLabelCrop(LL, labelNumber, labelStats(labelNumber).BoundingBox, config);
-    else
-        fitCache{labelNumber} = emptyEllipseFit();
     end
 end
 end
 
 function decision = evaluateMergeCandidate(LL, labelA, labelB, config, fitCache, labelStats)
-fitA = fitCache{labelA};
-fitB = fitCache{labelB};
+fitA = getCachedFit(fitCache, labelA);
+fitB = getCachedFit(fitCache, labelB);
 
 fitMerged = fitEllipseToMergedPair(LL, labelA, labelB, labelStats, config);
 
@@ -122,6 +159,14 @@ separateError = inf;
 if fitA.IsValid && fitB.IsValid
     separateError = (fitA.Error * fitA.NumPoints + fitB.Error * fitB.NumPoints) / ...
         (fitA.NumPoints + fitB.NumPoints);
+end
+
+function fit = getCachedFit(fitCache, labelNumber)
+if labelNumber <= numel(fitCache) && ~isempty(fitCache{labelNumber})
+    fit = fitCache{labelNumber};
+else
+    fit = emptyEllipseFit();
+end
 end
 
 improvement = separateError - fitMerged.Error;
