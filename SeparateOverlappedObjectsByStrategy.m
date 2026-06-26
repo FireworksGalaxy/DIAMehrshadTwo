@@ -78,6 +78,7 @@ end
 
 if any(watershedMask(:))
     newImage = MaskOverlappedBubblesBeforeWatershed(I_Formask, watershedMask, config);
+    save('newImage.mat', 'newImage'); % save the masked cluster image as a matrix
     watershedLabels = WatershedMyself(newImage, config); % This function return only the overlapped objects.
     watershedObjects = CombineWatershedSegments(watershedLabels, config);
     FinalSegmentedObjects = appendLabels(FinalSegmentedObjects, watershedObjects);
