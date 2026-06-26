@@ -202,6 +202,29 @@ offset = max(FinalSegmentedObjects(:));
 L_combined = FinalSegmentedObjects;
 singleMask = (LabelledImage > 0) & (FinalSegmentedObjects == 0);
 L_combined(singleMask) = LabelledImage(singleMask) + offset;
+
+% --- Safety net: never lose a bubble ---------------------------------------
+% A bubble can disappear when it was removed from the single-bubble branch as
+% "overlapped" but the watershed branch failed to reproduce it (e.g. the
+% cluster was not split and then dropped as an over-large region). Recover any
+% part of the cleaned mask BW that ended up with no label so that every bubble
+% present in BW is represented in the final result.
+recoverMask = BW & (L_combined == 0);
+% Drop thin watershed ridge slivers (1-2 px separation lines) so they do not
+% become spurious sliver "bubbles"; keep genuine blob-shaped regions.
+recoverMask = imopen(recoverMask, strel('disk', 3));
+recoverMask = bwareaopen(recoverMask, config.min_object_area);
+recoveredCC = bwconncomp(recoverMask);
+recoverOffset = max(L_combined(:));
+for recoverIndex = 1:recoveredCC.NumObjects
+    recoverOffset = recoverOffset + 1;
+    L_combined(recoveredCC.PixelIdxList{recoverIndex}) = recoverOffset;
+end
+if config.verbose && recoveredCC.NumObjects > 0
+    fprintf('Safety net recovered %d bubble(s) dropped by both branches.\n', ...
+        recoveredCC.NumObjects);
+end
+
 % Compact labels to 1-..-N so there are no empty gaps (empty labels would show
 % up as zero-area phantom objects with NaN diameter).
 L_combined = ReorderingLabels(L_combined);

@@ -62,18 +62,13 @@ function config = BubbleDetectionConfig()
     config.curvature_min_point_separation = 20;     % Avoid duplicate nearby points
     config.curvature_overlay_point_radius = 6;
 
-    % Separation strategy after overlapped objects are detected. Objects with
-    % exactly two defect/neck points are treated as two-bubble overlaps and are
-    % separated by watershed. Objects with more defect points can use either
-    % watershed or an experimental implicit cubic curve split.
+    % Separation strategy after overlapped objects are detected. Two-bubble
+    % overlap regions are always separated by normal watershed. Multi-overlap
+    % regions can also be sent through normal watershed or skipped while tuning.
     config.separation_defect_count_source = 'convexity'; % Options: 'curvature' or 'convexity'
     config.two_bubble_defect_count = 2;
     config.multiple_bubble_min_defects = 3;
-    config.multiple_overlap_separation_method = 'watershed'; % Options: 'watershed' or 'curve_fit'
-    config.curve_fit_fallback_to_watershed = true;
-    config.curve_fit_zero_tolerance = 0.04;
-    config.curve_fit_max_boundary_points = 600;
-    config.curve_fit_min_component_area = 50;
+    config.multiple_overlap_separation_method = 'watershed'; % Options: 'watershed' or 'skip'
     
     %% WATERSHED SEGMENTATION PARAMETERS (For overlapped bubbles)
     
@@ -91,7 +86,7 @@ function config = BubbleDetectionConfig()
     % depth is scaled to a fraction of the per-cluster max distance transform
     % instead of the fixed extended_minima_value above. Default false keeps
     % the original behaviour.
-    config.watershed_adaptive_markers = false;
+    config.watershed_adaptive_markers = false; % the true flag doesn't work properly, you can check it out later
     config.extended_minima_fraction = 0.25;     % Used only when adaptive markers are enabled
     
     %% POST-PROCESSING PARAMETERS
@@ -109,23 +104,9 @@ function config = BubbleDetectionConfig()
     % to mm. You can measure this with CalibrateImageFromRuler().
     config.calibration_divisor = 15;
     
-    % Merging watershed regions that belong to the same bubble
-    config.watershed_merge_strategy = 'ellipse'; % Options: 'ellipse' or 'centroid'
-    config.merge_distance_threshold = 25;      % Pixels - used only by centroid merge strategy
-    config.merge_max_iterations = 5;           % Max iterations for region merging
-
-    % Ellipse-guided watershed merging. Neighboring watershed regions are
-    % merged only when the merged boundary is a better ellipse fit than the
-    % two separate boundaries.
-    config.ellipse_merge_error_ratio = 1.05;       % merged RMSE must be below this fraction of separate RMSE
-    config.ellipse_merge_min_improvement = -0.01;  % minimum absolute RMSE improvement; negative allows nearly equal fits
-    config.ellipse_merge_max_merged_error = 0.50;  % reject merges with poor absolute ellipse fit
-    config.ellipse_merge_neighbor_dilation_radius = 2; % pixels for finding neighbors across watershed ridges
-    config.ellipse_merge_max_candidate_pairs = 40;  % Max neighboring pairs evaluated per iteration
-    config.ellipse_merge_max_boundary_points = 120; % Max boundary points used per ellipse fit
-    config.show_ellipse_merge_figures = false;     % Show candidate pairs and accepted ellipse fits
-    config.ellipse_merge_max_visual_pairs = 200;   % Limit candidate-pair lines drawn in diagnostics
-    config.ellipse_merge_max_fit_figures = 8;      % Limit before/after ellipse fit diagnostic figures
+    % Merging nearby watershed regions after normal watershed separation.
+    config.merge_distance_threshold = 25;      % Pixels - merge regions with centroids < this distance
+    config.merge_max_iterations = 25;          % Max iterations for region merging
     
     % Visualization filtering
     config.roundness_threshold_display = 1.8;  % Display only objects with roundness < 1.8
